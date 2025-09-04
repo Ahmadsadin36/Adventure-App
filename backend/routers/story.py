@@ -12,6 +12,8 @@ from schemas.story import (
 )
 from schemas.job import StoryJobResponse
 from core.story_generator import StoryGenerator
+from core.config import settings  # [sample update]: detect sample vs OpenAI mode
+
 
 router = APIRouter(
     prefix="/stories",
@@ -45,6 +47,13 @@ def create_story(
     db.add(job)
     db.commit()
 
+    # [sample update]: If we're in sample mode, finish immediately (no polling needed).
+    if not settings.has_openai:
+        generate_story_task(job_id=job_id, theme=request.theme, session_id=session_id)
+        job = db.query(StoryJob).filter(StoryJob.job_id == job_id).first()
+        return job
+
+    # Original behavior (OpenAI path): background worker
     background_tasks.add_task(
         generate_story_task,
         job_id=job_id,
@@ -53,6 +62,7 @@ def create_story(
     )
 
     return job
+
 
 def generate_story_task(job_id: str, theme: str, session_id: str):
     db = SessionLocal()
